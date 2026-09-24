@@ -702,6 +702,352 @@ a:hover { color: var(--primary-dark); }
     }
 }
 
+/* ========== Favorites Groups Layout ========== */
+.favorites-layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 20px;
+    align-items: start;
+}
+
+.groups-sidebar {
+    background: #fff;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 12px;
+    position: sticky;
+    top: 76px;
+}
+
+.groups-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px 10px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--gray-700);
+    border-bottom: 1px solid var(--gray-200);
+    margin-bottom: 8px;
+}
+
+.group-add-btn {
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.group-add-btn:hover { background: var(--primary-dark); }
+
+.groups-list { list-style: none; }
+.groups-list li { position: relative; }
+
+.group-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 10px;
+    border-radius: var(--radius-sm);
+    color: var(--gray-600);
+    font-size: 0.88rem;
+    transition: var(--transition);
+}
+.group-item:hover { background: var(--gray-100); color: var(--primary); }
+.group-item.active {
+    background: rgba(79, 70, 229, 0.1);
+    color: var(--primary-dark);
+    font-weight: 600;
+}
+.group-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.group-count {
+    flex-shrink: 0;
+    min-width: 22px;
+    text-align: center;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: var(--gray-100);
+    color: var(--gray-500);
+    font-size: 0.75rem;
+}
+.group-item.active .group-count {
+    background: var(--primary);
+    color: #fff;
+}
+
+/* 分组行的重命名/删除按钮，悬停行时显示（覆盖计数位置） */
+.group-manage {
+    display: none;
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    gap: 2px;
+    background: #fff;
+    padding-left: 6px;
+}
+.group-row:hover .group-manage { display: inline-flex; }
+.group-row:hover .group-item .group-count { visibility: hidden; }
+.group-manage-btn {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.78rem;
+    padding: 2px 3px;
+    border-radius: 4px;
+    line-height: 1;
+}
+.group-manage-btn:hover { background: var(--gray-100); }
+
+.favorites-main { min-width: 0; }
+
+.favorites-stats .stat-card {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    cursor: pointer;
+}
+.stat-total.stat-active {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+}
+
+.current-group-tip,
+.trash-tip {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: var(--gray-600);
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+}
+.trash-tip { color: #92400e; background: #fef3c7; }
+
+/* ========== Batch Toolbar ========== */
+.batch-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    background: #fff;
+    border: 1px dashed var(--gray-300);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    margin-bottom: 14px;
+}
+.batch-select-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.88rem;
+    color: var(--gray-700);
+    cursor: pointer;
+    margin: 0;
+}
+.batch-selected-count { font-size: 0.85rem; color: var(--gray-500); }
+.batch-selected-count strong { color: var(--primary); font-size: 1rem; }
+.batch-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* ========== Favorite Card Checkbox ========== */
+.favorite-card { padding-left: 44px; }
+.favorite-check {
+    position: absolute;
+    left: 12px;
+    top: 16px;
+    z-index: 9;
+    cursor: pointer;
+    display: inline-flex;
+    padding: 4px;
+}
+.favorite-check input {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+.message-card.selected-card {
+    outline: 2px solid var(--primary-light);
+    outline-offset: -2px;
+    background: rgba(79, 70, 229, 0.03);
+}
+
+.card-group-tag {
+    font-size: 0.75rem;
+    color: var(--primary-dark);
+    background: rgba(79, 70, 229, 0.08);
+    padding: 1px 8px;
+    border-radius: 10px;
+}
+
+.trash-card-actions {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: flex;
+    gap: 6px;
+    z-index: 10;
+}
+
+/* ========== Modal Small ========== */
+.modal-sm { max-width: 420px; }
+
+/* ========== Move Group Options ========== */
+.move-group-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.move-group-option {
+    display: block;
+    cursor: pointer;
+    margin: 0;
+}
+.move-group-option input { display: none; }
+.move-group-option span {
+    display: block;
+    padding: 10px 12px;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: 0.88rem;
+    text-align: center;
+    background: #fff;
+    transition: var(--transition);
+}
+.move-group-option input:checked + span {
+    border-color: var(--primary);
+    background: rgba(79, 70, 229, 0.06);
+    color: var(--primary-dark);
+    font-weight: 600;
+}
+.move-group-option:hover span { border-color: var(--primary-light); }
+.move-new-group { margin-bottom: 8px; }
+.move-new-group input { width: 100%; }
+
+/* ========== Batch Confirm / Result Lists ========== */
+.batch-confirm-tip {
+    font-size: 0.88rem;
+    color: var(--gray-600);
+    margin-bottom: 12px;
+}
+.batch-confirm-list,
+.batch-result-list {
+    list-style: none;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    max-height: 320px;
+    overflow-y: auto;
+    margin-bottom: 16px;
+}
+.batch-confirm-item {
+    display: flex;
+    align-items: center;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--gray-100);
+}
+.batch-confirm-item:last-child { border-bottom: none; }
+.batch-confirm-item label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin: 0;
+    cursor: pointer;
+    font-size: 0.88rem;
+}
+.batch-confirm-item input { accent-color: var(--primary); width: 16px; height: 16px; }
+.batch-confirm-item input:disabled { cursor: not-allowed; }
+.batch-item-icon { flex-shrink: 0; }
+.batch-item-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--gray-800);
+}
+.batch-item-id {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: var(--gray-400);
+}
+.batch-confirm-empty {
+    padding: 14px 12px;
+    font-size: 0.88rem;
+    color: var(--gray-500);
+    text-align: center;
+}
+
+.scope-action-bar {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.batch-result-summary {
+    font-size: 0.92rem;
+    margin-bottom: 12px;
+}
+.result-ok { color: var(--success); font-weight: 600; }
+.result-fail { color: var(--danger); font-weight: 600; }
+
+.batch-result-item {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--gray-100);
+}
+.batch-result-item:last-child { border-bottom: none; }
+.batch-result-item.is-fail { background: #fef2f2; }
+.batch-result-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.batch-result-status { font-size: 0.8rem; flex-shrink: 0; }
+.batch-result-msg {
+    font-size: 0.8rem;
+    color: var(--gray-500);
+    margin-top: 2px;
+}
+.batch-result-item.is-fail .batch-result-msg { color: #b91c1c; }
+
+/* ========== Groups Sidebar Responsive ========== */
+@media (max-width: 768px) {
+    .favorites-layout {
+        grid-template-columns: 1fr;
+    }
+    .groups-sidebar {
+        position: static;
+    }
+    .groups-list {
+        display: flex;
+        overflow-x: auto;
+        gap: 6px;
+        padding-bottom: 4px;
+    }
+    .groups-list li { flex-shrink: 0; }
+    .group-item { padding: 7px 12px; }
+    .group-manage { display: none !important; }
+    .batch-actions { margin-left: 0; width: 100%; }
+    .favorite-card { padding-left: 40px; }
+}
+
 /* ========== Report Button ========== */
 .report-btn {
     gap: 6px;
