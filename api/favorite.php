@@ -16,6 +16,7 @@ if ($messageId <= 0) {
 }
 
 $db = getDB();
+ensureFavoriteGroupsSchema($db);
 
 $stmt = $db->prepare("SELECT id FROM messages WHERE id = ? AND status = 1");
 $stmt->execute([$messageId]);

@@ -61,7 +61,12 @@ function toggleFavorite(event, btn) {
                         card.style.transform = 'translateX(-100px)';
                         setTimeout(() => {
                             card.remove();
-                            updateFavoritesStats();
+                            // 收藏页通过服务端汇总同步数量、分类统计与分组视图
+                            if (typeof window.onFavoriteToggled === 'function') {
+                                window.onFavoriteToggled(result.data);
+                            } else {
+                                updateFavoritesStats();
+                            }
                             checkEmptyState();
                         }, 300);
                     }

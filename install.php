@@ -40,16 +40,29 @@ try {
         `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='管理员表'");
 
+    // 收藏分组表
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `favorite_groups` (
+        `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        `visitor_id` VARCHAR(64) NOT NULL COMMENT '访客唯一标识',
+        `name` VARCHAR(50) NOT NULL COMMENT '分组名称',
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+        UNIQUE KEY `uk_visitor_name` (`visitor_id`, `name`),
+        INDEX `idx_visitor_id` (`visitor_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='收藏分组表'");
+
     // 收藏表
     $pdo->exec("CREATE TABLE IF NOT EXISTS `favorites` (
         `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         `visitor_id` VARCHAR(64) NOT NULL COMMENT '访客唯一标识',
         `message_id` INT UNSIGNED NOT NULL COMMENT '留言ID',
+        `group_id` INT UNSIGNED NULL DEFAULT NULL COMMENT '所属分组ID，NULL为未分组',
         `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '收藏时间',
         UNIQUE KEY `uk_visitor_message` (`visitor_id`, `message_id`),
         INDEX `idx_visitor_id` (`visitor_id`),
         INDEX `idx_message_id` (`message_id`),
-        FOREIGN KEY (`message_id`) REFERENCES `messages`(`id`) ON DELETE CASCADE
+        INDEX `idx_group_id` (`group_id`),
+        FOREIGN KEY (`message_id`) REFERENCES `messages`(`id`) ON DELETE CASCADE,
+        FOREIGN KEY (`group_id`) REFERENCES `favorite_groups`(`id`) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='收藏表'");
 
     // 举报表

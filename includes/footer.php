@@ -5,5 +5,8 @@
     </div>
 </footer>
 <script src="<?= $jsPath ?? 'assets/js/main.js' ?>"></script>
+<?php if (!empty($extraJs)): ?>
+<script src="<?= $extraJs ?>"></script>
+<?php endif; ?>
 </body>
 </html>

@@ -149,6 +149,316 @@ function toggleFavorite($messageId) {
 }
 
 /**
+ * 确保收藏分组相关表结构存在（幂等迁移，老库访问时自动补建）
+ */
+function ensureFavoriteGroupsSchema($db) {
+    static $checked = false;
+    if ($checked) return;
+    $checked = true;
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `favorite_groups` (
+        `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        `visitor_id` VARCHAR(64) NOT NULL COMMENT '访客唯一标识',
+        `name` VARCHAR(50) NOT NULL COMMENT '分组名称',
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+        UNIQUE KEY `uk_visitor_name` (`visitor_id`, `name`),
+        INDEX `idx_visitor_id` (`visitor_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='收藏分组表'");
+
+    $col = $db->query("SHOW COLUMNS FROM `favorites` LIKE 'group_id'")->fetch();
+    if (!$col) {
+        $db->exec("ALTER TABLE `favorites`
+            ADD COLUMN `group_id` INT UNSIGNED NULL DEFAULT NULL COMMENT '所属分组ID，NULL为未分组' AFTER `message_id`");
+        $db->exec("ALTER TABLE `favorites` ADD INDEX `idx_group_id` (`group_id`)");
+        try {
+            $db->exec("ALTER TABLE `favorites`
+                ADD CONSTRAINT `fk_favorites_group`
+                FOREIGN KEY (`group_id`) REFERENCES `favorite_groups`(`id`) ON DELETE SET NULL");
+        } catch (Exception $e) {
+            // 外键已存在等情况可忽略，不影响功能
+        }
+    }
+}
+
+/**
+ * 校验收藏分组名称
+ * 返回清洗后的名称，不合法时抛出异常
+ */
+function normalizeGroupName($name) {
+    $name = trim($name);
+    $len = mb_strlen($name, 'UTF-8');
+    if ($len === 0) {
+        throw new Exception('分组名称不能为空');
+    }
+    if ($len > 20) {
+        throw new Exception('分组名称不能超过20个字符');
+    }
+    return $name;
+}
+
+/**
+ * 获取访客的全部分组（含组内有效收藏数量，按创建时间排序）
+ */
+function getFavoriteGroups($visitorId, $type = '') {
+    $db = getDB();
+    // 按与有效留言（status=1）的关联统计组内收藏数量；失效留言不计入
+    $sql = "SELECT g.id, g.name, g.created_at,
+            COUNT(m.id) AS item_count
+            FROM favorite_groups g
+            LEFT JOIN favorites f ON f.group_id = g.id
+            LEFT JOIN messages m ON f.message_id = m.id AND m.status = 1
+            WHERE g.visitor_id = ?";
+    $params = [$visitorId];
+    if ($type && in_array($type, ['help', 'suggest', 'lost'])) {
+        $sql .= " AND (m.id IS NULL OR m.type = ?)";
+        $params[] = $type;
+    }
+    $sql .= " GROUP BY g.id, g.name, g.created_at ORDER BY g.created_at ASC";
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetchAll();
+}
+
+/**
+ * 按ID获取访客自己的分组（归属校验），不存在返回 false
+ */
+function getFavoriteGroup($groupId, $visitorId) {
+    $groupId = intval($groupId);
+    if ($groupId <= 0) return false;
+    $db = getDB();
+    $stmt = $db->prepare("SELECT * FROM favorite_groups WHERE id = ? AND visitor_id = ?");
+    $stmt->execute([$groupId, $visitorId]);
+    return $stmt->fetch() ?: false;
+}
+
+/**
+ * 创建收藏分组，返回分组ID
+ */
+function createFavoriteGroup($visitorId, $name) {
+    $name = normalizeGroupName($name);
+    $db = getDB();
+
+    $stmt = $db->prepare("SELECT id FROM favorite_groups WHERE visitor_id = ? AND name = ?");
+    $stmt->execute([$visitorId, $name]);
+    if ($stmt->fetch()) {
+        throw new Exception('已存在同名分组');
+    }
+
+    $stmt = $db->prepare("INSERT INTO favorite_groups (visitor_id, name) VALUES (?, ?)");
+    $stmt->execute([$visitorId, $name]);
+    return intval($db->lastInsertId());
+}
+
+/**
+ * 重命名收藏分组
+ */
+function renameFavoriteGroup($groupId, $visitorId, $name) {
+    $name = normalizeGroupName($name);
+    if (!getFavoriteGroup($groupId, $visitorId)) {
+        throw new Exception('分组不存在');
+    }
+    $db = getDB();
+
+    $stmt = $db->prepare("SELECT id FROM favorite_groups WHERE visitor_id = ? AND name = ? AND id <> ?");
+    $stmt->execute([$visitorId, $name, $groupId]);
+    if ($stmt->fetch()) {
+        throw new Exception('已存在同名分组');
+    }
+
+    $stmt = $db->prepare("UPDATE favorite_groups SET name = ? WHERE id = ? AND visitor_id = ?");
+    $stmt->execute([$name, $groupId, $visitorId]);
+    return true;
+}
+
+/**
+ * 删除收藏分组，组内收藏自动回到未分组（依赖外键 ON DELETE SET NULL）
+ */
+function deleteFavoriteGroup($groupId, $visitorId) {
+    $group = getFavoriteGroup($groupId, $visitorId);
+    if (!$group) {
+        throw new Exception('分组不存在');
+    }
+    $db = getDB();
+
+    // 即使外键未生效也显式将组内收藏移回未分组，保证行为一致
+    $db->prepare("UPDATE favorites SET group_id = NULL WHERE group_id = ? AND visitor_id = ?")
+        ->execute([$groupId, $visitorId]);
+    $db->prepare("DELETE FROM favorite_groups WHERE id = ? AND visitor_id = ?")
+        ->execute([$groupId, $visitorId]);
+    return true;
+}
+
+/**
+ * 获取收藏页统计汇总（总数、分类数、未分组数、各分组数）
+ * type 非空时所有统计均按留言类型过滤
+ */
+function getFavoriteSummary($visitorId, $type = '') {
+    $db = getDB();
+
+    $where = "WHERE f.visitor_id = ? AND m.status = 1";
+    $params = [$visitorId];
+    if ($type && in_array($type, ['help', 'suggest', 'lost'])) {
+        $where .= " AND m.type = ?";
+        $params[] = $type;
+    }
+
+    $stmt = $db->prepare("SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN m.type='help' THEN 1 ELSE 0 END) AS help_count,
+        SUM(CASE WHEN m.type='suggest' THEN 1 ELSE 0 END) AS suggest_count,
+        SUM(CASE WHEN m.type='lost' THEN 1 ELSE 0 END) AS lost_count,
+        SUM(CASE WHEN f.group_id IS NULL THEN 1 ELSE 0 END) AS ungrouped_count
+        FROM favorites f INNER JOIN messages m ON f.message_id = m.id $where");
+    $stmt->execute($params);
+    $summary = $stmt->fetch();
+
+    $summary['total'] = intval($summary['total']);
+    $summary['help_count'] = intval($summary['help_count']);
+    $summary['suggest_count'] = intval($summary['suggest_count']);
+    $summary['lost_count'] = intval($summary['lost_count']);
+    $summary['ungrouped_count'] = intval($summary['ungrouped_count']);
+    $summary['groups'] = getFavoriteGroups($visitorId, $type);
+
+    return $summary;
+}
+
+/**
+ * 批量整理收藏：move 移入分组（groupId 为 0/NULL 表示移到未分组）、remove 批量取消、restore 批量恢复
+ * 逐条独立处理，单条失败不影响其他条目、不回滚成功项
+ * 返回: ['action' => ..., 'results' => [['message_id','title','ok','msg']...], 'success' => n, 'failed' => n]
+ */
+function batchUpdateFavorites($visitorId, $action, array $messageIds, $groupId = null) {
+    $db = getDB();
+
+    $validActions = ['move', 'remove', 'restore'];
+    if (!in_array($action, $validActions)) {
+        throw new Exception('不支持的批量操作');
+    }
+
+    // 归并、去重、过滤非法ID
+    $ids = [];
+    foreach ($messageIds as $id) {
+        $id = intval($id);
+        if ($id > 0) $ids[$id] = $id;
+    }
+    $ids = array_values($ids);
+    if (empty($ids)) {
+        throw new Exception('请先勾选要操作的留言');
+    }
+    if (count($ids) > 100) {
+        throw new Exception('单次最多操作100条留言');
+    }
+
+    $targetGroupId = null;
+    if ($action === 'move' && $groupId !== null && intval($groupId) > 0) {
+        if (!getFavoriteGroup($groupId, $visitorId)) {
+            throw new Exception('目标分组不存在');
+        }
+        $targetGroupId = intval($groupId);
+    }
+    if ($action === 'restore' && $groupId !== null && intval($groupId) > 0) {
+        // 恢复时允许直接恢复到当前所在分组视图
+        if (!getFavoriteGroup($groupId, $visitorId)) {
+            throw new Exception('目标分组不存在');
+        }
+        $targetGroupId = intval($groupId);
+    }
+
+    // 一次性查询留言信息（标题、状态）
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $msgStmt = $db->prepare("SELECT id, title, status FROM messages WHERE id IN ($placeholders)");
+    $msgStmt->execute($ids);
+    $messages = [];
+    foreach ($msgStmt->fetchAll() as $row) {
+        $messages[intval($row['id'])] = $row;
+    }
+
+    // 一次性查询当前收藏归属
+    $favStmt = $db->prepare("SELECT message_id, group_id FROM favorites WHERE visitor_id = ? AND message_id IN ($placeholders)");
+    $favStmt->execute(array_merge([$visitorId], $ids));
+    $favorites = [];
+    foreach ($favStmt->fetchAll() as $row) {
+        $favorites[intval($row['message_id'])] = $row;
+    }
+
+    $results = [];
+    $success = 0;
+    $failed = 0;
+
+    $moveStmt = $db->prepare("UPDATE favorites SET group_id = ? WHERE visitor_id = ? AND message_id = ?");
+    $deleteStmt = $db->prepare("DELETE FROM favorites WHERE visitor_id = ? AND message_id = ?");
+    $insertStmt = $db->prepare("INSERT INTO favorites (visitor_id, message_id, group_id) VALUES (?, ?, ?)");
+
+    foreach ($ids as $id) {
+        $title = isset($messages[$id]) ? $messages[$id]['title'] : "留言#{$id}";
+        $item = ['message_id' => $id, 'title' => $title, 'ok' => false, 'msg' => ''];
+
+        try {
+            if ($action === 'move') {
+                if (!isset($messages[$id])) {
+                    throw new Exception('留言不存在，无法移动');
+                }
+                if (!isset($favorites[$id])) {
+                    throw new Exception('该留言不在收藏中，无法移动');
+                }
+                $currentGroupId = $favorites[$id]['group_id'] !== null ? intval($favorites[$id]['group_id']) : null;
+                if ($currentGroupId === $targetGroupId) {
+                    $item['ok'] = true;
+                    $item['msg'] = $targetGroupId === null ? '已在未分组中' : '已在该分组中';
+                } else {
+                    $moveStmt->execute([$targetGroupId, $visitorId, $id]);
+                    if ($moveStmt->rowCount() < 1) {
+                        throw new Exception('移动失败，请稍后重试');
+                    }
+                    $item['msg'] = $targetGroupId === null ? '已移至未分组' : '已移入分组';
+                    $item['ok'] = true;
+                }
+            } elseif ($action === 'remove') {
+                if (!isset($favorites[$id])) {
+                    throw new Exception('该留言不在收藏中，无需取消');
+                }
+                $deleteStmt->execute([$visitorId, $id]);
+                if ($deleteStmt->rowCount() < 1) {
+                    throw new Exception('取消失败，请稍后重试');
+                }
+                $item['msg'] = '已取消收藏';
+                $item['ok'] = true;
+            } else { // restore
+                if (isset($favorites[$id])) {
+                    throw new Exception('该留言已在收藏中，无需恢复');
+                }
+                if (!isset($messages[$id])) {
+                    throw new Exception('留言已被删除，无法恢复');
+                }
+                if (intval($messages[$id]['status']) !== 1) {
+                    throw new Exception('留言未通过审核，无法恢复');
+                }
+                $insertStmt->execute([$visitorId, $id, $targetGroupId]);
+                $item['msg'] = $targetGroupId === null ? '已恢复到未分组' : '已恢复到分组';
+                $item['ok'] = true;
+            }
+        } catch (Exception $e) {
+            $item['msg'] = $e->getMessage();
+        }
+
+        if ($item['ok']) {
+            $success++;
+        } else {
+            $failed++;
+        }
+        $results[] = $item;
+    }
+
+    return [
+        'action' => $action,
+        'group_id' => $targetGroupId,
+        'results' => $results,
+        'success' => $success,
+        'failed' => $failed,
+    ];
+}
+
+/**
  * 获取举报类型文字
  */
 function getReportTypeLabel($type) {
